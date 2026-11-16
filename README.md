@@ -11,7 +11,8 @@ This repository currently contains the **database and sample ID foundation**. Th
 | MySQL database schema | Done |
 | Single sample ID generator | Done |
 | Three-step sampling records linked by one sample ID | Done (database level) |
-| Web API and dashboard | Planned |
+| Web API (create sample, complete steps in order, read results) | Basic version written |
+| Web dashboard (Figma screens) | Planned |
 | GIS analytics (historical and upstream/downstream data) | Planned |
 | Huawei Cloud integration (IoTDA, ModelArts) | Planned |
 | MicroFusion-AI multimodal inference | Planned |
@@ -26,6 +27,7 @@ This repository currently contains the **database and sample ID foundation**. Th
 | `schema.sql` | Creates the `microwatch` database and its 7 tables |
 | `SampleId.java` | The only place a sample ID is built. Format: `MW-<site>-<yyyymmdd>-<seq>`, for example `MW-S03-20261117-0001` |
 | `Demo.java` | Creates one demo sample with its three steps (Collection, Filtration, Imaging) |
+| `Api.java` | Web API built with the JDK's built-in HTTP server (no frameworks) |
 | `README.md` | This file |
 
 ### Database tables
@@ -66,7 +68,7 @@ You should see 7 tables. Note that `schema.sql` only works on a fresh database. 
 
 ### 2. Compile
 
-    javac -d out SampleId.java Demo.java
+    javac -d out SampleId.java Demo.java Api.java
 
 ### 3. Run the demo
 
@@ -75,12 +77,12 @@ Set your database password as an environment variable (never write it into a fil
 Windows (Command Prompt):
 
     set DB_PASS=yourpassword
-    java -cp "out;mysql-connector-j-26.10.0.jar" Demo
+    java -cp "out;mysql-connector-j-<version>.jar" Demo
 
 macOS / Linux:
 
     export DB_PASS=yourpassword
-    java -cp "out:mysql-connector-j-26.10.0.jar" Demo
+    java -cp "out:mysql-connector-j-<version>.jar" Demo
 
 Expected output:
 
@@ -98,6 +100,38 @@ Running it again creates `-0002`, and so on.
 
 To use a cloud database, set `DB_URL` to your Huawei Cloud RDS address, for example `jdbc:mysql://<rds-address>:3306/microwatch`, together with `DB_USER` and `DB_PASS`. No code changes are needed.
 
+## Web API
+
+Start it (same database settings as the demo; replace the jar name with yours).
+
+Windows (Command Prompt):
+
+    set DB_PASS=yourpassword
+    java -cp "out;mysql-connector-j-<version>.jar" Api
+
+macOS / Linux:
+
+    export DB_PASS=yourpassword
+    java -cp "out:mysql-connector-j-<version>.jar" Api
+
+It listens on `http://127.0.0.1:8080` (local only). Set `PORT` or `HOST` to change this; when deploying behind a web server, set `HOST=0.0.0.0`.
+
+| Method and path | What it does |
+|---|---|
+| `GET /api/health` | Check the API is running |
+| `GET /api/sites` | List monitoring sites |
+| `POST /api/sites` | Create a site: `code`, `name`, `latitude`, `longitude`, optional `position` (upstream, downstream, other) |
+| `GET /api/samples` | List the 50 most recent samples |
+| `POST /api/samples` | Create a sample with its three pending steps: `site_code`, `volume_ml`, optional `water_source` |
+| `GET /api/samples/{id}` | Get one sample with its steps |
+| `POST /api/samples/{id}/steps/{1-3}/complete` | Mark a step done (optional `notes`). Steps must be completed in order |
+
+Errors are returned as JSON, for example `{"error":"Step 1 (Collection) must be completed first"}`.
+
+Example (Command Prompt, using curl):
+
+    curl -X POST http://127.0.0.1:8080/api/samples -H "Content-Type: application/json" -d "{\"site_code\":\"S03\",\"water_source\":\"River\",\"volume_ml\":1000}"
+
 ## Verify the data
 
     mysql -u root -p -e "USE microwatch; SELECT sample_id, step_no, step_name FROM sample_steps;"
@@ -108,6 +142,7 @@ You should see three steps sharing the same sample ID.
 
 - Do not commit passwords, device secrets, or `.env` files.
 - Restrict database access to your own IP or a private network.
+- The API allows requests from any website (CORS `*`) and has no login yet. Keep it local, and add authentication and a stricter CORS rule before exposing it publicly.
 
 ## Troubleshooting
 
